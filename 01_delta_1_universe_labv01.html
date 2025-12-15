@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Δ₁ Universe Lab — Slime-mold gate + instant-solvent memory visualization" />
+  <title>Δ₁ Universe Lab v2.0 — Production + Headless</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; display: flex; flex-direction: column; align-items: center; font-family: 'Segoe UI', Arial, sans-serif; background: #0a0a0a; color: #fff; min-height: 100vh; }
+    body.headless { opacity: 0; pointer-events: none; }
+    #controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 10px; max-width: 1200px; }
+    input, select { padding: 8px; background: #111; color: #fff; border: 1px solid #555; border-radius: 4px; font-size: 14px; }
+    input:focus, select:focus { outline: none; border-color: #888; }
+    label { margin: 5px; font-size: 14px; user-select: none; }
+    button { padding: 8px 14px; background: linear-gradient(45deg, #333, #666); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+    button:hover { background: linear-gradient(45deg, #666, #999); transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    canvas { border: 1px solid #444; background: #111; margin: 10px; box-shadow: 0 0 15px #000 inset; }
+    pre { background: #222; padding: 10px; border-radius: 6px; max-width: 900px; overflow-x: auto; margin: 10px; box-shadow: 0 0 8px #000 inset; font-size: 12px; line-height: 1.4; }
+    #loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); padding: 20px 40px; border-radius: 8px; display: none; z-index: 1000; }
+    #loading.active { display: block; }
+    .spinner { border: 3px solid #333; border-top: 3px solid #fff; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    #header { text-align: center; margin: 20px 0 10px; }
+    #header h1 { margin: 0 0 5px; font-size: 28px; }
+    #header .version { font-size: 12px; color: #888; font-weight: normal; }
+    #status { font-size: 12px; color: #888; margin: 5px 0; min-height: 20px; }
+    .error { color: #ff6b6b; background: rgba(255,107,107,0.1); padding: 10px; border-radius: 4px; margin: 10px; max-width: 900px; }
+    .badge { display: inline-block; background: #2a9d8f; color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 10px; margin-left: 5px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h1>Δ₁ Universe Lab <span class="version">v2.0 Production</span><span class="badge">HEADLESS</span></h1>
+    <div id="status">Ready • Polaris clamp active • W max: 500k • Batch mode enabled</div>
+  </div>
+  <div id="loading"><div class="spinner"></div><div>Computing...</div></div>
+  <div id="controls">
+    <input id="seedInput" type="text" value="October 18, 2025" placeholder="Enter seed..." />
+
+    <label for="widthSlider">Width: <span id="widthValue">1477</span></label>
+    <input type="range" id="widthSlider" min="33" max="500000" value="1477" />
+    <input type="number" id="widthInput" min="33" max="500000" value="1477" style="width:80px" />
+
+    <label for="kappaSlider">Kappa: <span id="kappaValue">432</span></label>
+    <input type="range" id="kappaSlider" min="1" max="500000" value="432" />
+    <input type="number" id="kappaInput" min="1" max="500000" value="432" style="width:80px" />
+
+    <label for="phaseSlider">Phase Offset: <span id="phaseValue">0</span></label>
+    <input type="range" id="phaseSlider" min="0" max="500000" value="0" />
+    <input type="number" id="phaseInput" min="0" max="500000" value="0" style="width:80px" />
+
+    <label for="pageInput">Page #</label>
+    <input id="pageInput" type="number" value="0" style="width:120px" />
+    <button id="popBtn" title="Jump to page instantly">Pop</button>
+    <button id="autoBtn" title="Auto-scan pages">Auto ▷</button>
+
+    <label for="maskType">Mask Type:</label>
+    <select id="maskType">
+      <option value="cantor">Cantor</option>
+      <option value="band">Band</option>
+    </select>
+
+    <div id="cantorOptions" style="display: block;">
+      <label for="depthSlider">Depth: <span id="depthValue">1477</span></label>
+      <input type="range" id="depthSlider" min="1" max="1477" value="1477" />
+      <input type="number" id="depthInput" min="1" max="1477" value="1477" style="width:80px" />
+    </div>
+
+    <div id="bandOptions" style="display: none;">
+      <label for="bandWidthSlider">Band Width: <span id="bandWidthValue">33</span></label>
+      <input type="range" id="bandWidthSlider" min="20" max="100" value="33" />
+      <input type="number" id="bandWidthInput" min="20" max="100" value="33" style="width:80px" />
+    </div>
+
+    <label for="useSigned">Use Signed:</label>
+    <input type="checkbox" id="useSigned" checked />
+
+    <label for="negTop">Thermocline (neg on top):</label>
+    <input type="checkbox" id="negTop" checked />
+
+    <label for="showSed">Show sediment:</label>
+    <input type="checkbox" id="showSed" />
+
+    <label for="showFib">Fibonacci bands:</label>
+    <input type="checkbox" id="showFib" />
+
+    <label for="showSolvent">Solvent (middle):</label>
+    <input type="checkbox" id="showSolvent" />
+
+    <label for="showRidge">Ridge (coherence):</label>
+    <input type="checkbox" id="showRidge" />
+  </div>
+
+  <button id="runBtn" title="Render current configuration (Space)">⚡ Unfold Universe</button>
+  <div style="display: flex; gap: 8px; margin: 10px;">
+    <button id="exportBarsPNG" title="Export bars canvas as PNG">💾 Bars PNG</button>
+    <button id="exportCloudPNG" title="Export cloud canvas as PNG">💾 Cloud PNG</button>
+    <button id="exportJSON" title="Export summary + invariants JSON">💾 Data JSON</button>
+    <button id="toggleDebug" title="Show performance metrics">🔍 Debug</button>
+  </div>
+  <canvas id="canvas" style="width:900px; height:400px;" aria-label="Delta bars visualization"></canvas>
+  <canvas id="pointCloud" style="width:900px; height:400px;" aria-label="Point cloud phase field"></canvas>
+  <pre id="summary" aria-label="Summary output"></pre>
+  <div id="error" class="error" style="display:none;"></div>
+
+  <script>
+    // ===== Δ₁ UNIVERSE LAB v2.0 — PRODUCTION + HEADLESS =====
+    // Core: Slime-mold gate + instant-solvent memory
+    // New: Headless batch mode via query strings
+    // Theory: Polaris clamp (no-zero law) + thermocline pairing
+    // Author: Δ₁ Research, October 2025
+    
+    'use strict';
+    
+    const STATES = [-1, 0, +1];
+    let debugMode = false;
+    let perfStats = { lastRenderMs: 0, renderCount: 0 };
+
+    function codeSum(str) {
+      let h = 2166136261 >>> 0;
+      for (let i = 0; i < str.length; i++) {
+        h = (h ^ str.charCodeAt(i)) >>> 0;
+        h = Math.imul(h, 16777619) >>> 0;
+      }
+      return h >>> 0;
+    }
+
+    function deltaSeed(W, seed) {
+      let s = typeof seed === 'number' ? seed : codeSum(seed);
+      const out = [];
+      for (let i = 0; i < W; i++) {
+        s = Math.imul(s, 1103515245) + 12345 >>> 0;
+        out.push(STATES[(s % 3)]);
+      }
+      return out;
+    }
+
+    function foldOnce(row) {
+      const W = row.length, out = new Array(W);
+      for (let i = 0; i < W; i++) {
+        const l = row[(i - 1 + W) % W], r = row[(i + 1) % W], c = row[i];
+        out[i] = (l === r && c !== 0) ? -c : (c === 0 ? 0 : c);
+      }
+      return out;
+    }
+
+    // *** No-Zero Delta clamp: if 0 appears, flip by gate direction ***
+    function clampNoZero(arr, gate) {
+      return arr.map((c, i) => (c === 0 ? (gate[i] || 1) : c));
+    }
+
+    function differenceStack(a, b) { return a.map((x, i) => x !== b[i] ? 1 : 0); }
+
+    function kappaGate(W, seed, kappa, phaseOffset) {
+      const kphase = [], gate = [];
+      // lock phase mixing to final flip constant 1477
+      let s = (codeSum(seed) + Math.trunc(phaseOffset) * 1477) >>> 0;
+      const denom = Math.max(2, kappa); // double-guard against divide-by-zero
+      for (let i = 0; i < W; i++) {
+        s = (s + 1) >>> 0;
+        const ph = Math.sin(2 * Math.PI * (i + s) / denom);
+        kphase.push(ph);
+        gate.push(ph >= 0 ? 1 : -1);
+      }
+      return { gate, phase: kphase };
+    }
+
+    function makeTargetMask(W, kind, opts) {
+      const mask = Array(W).fill(0);
+      if (kind === 'band') {
+        const cw = Math.min(W, Math.max(1, opts.width || 33)), off = Math.floor((W - cw) / 2);
+        for (let i = Math.max(0, off); i < off + cw && i < W; i++) mask[i] = 1;
+      } else if (kind === 'cantor') {
+        // lock requested depth to <= 1477 but clamp to effective maximum by width
+        const reqDepth = Math.max(1, Math.min(1477, opts.depth || 4));
+        const maxEff = Math.max(1, Math.floor(Math.log(W) / Math.log(3)) + 2);
+        const depth = Math.min(reqDepth, maxEff);
+        // iterative stack to avoid deep recursion
+        const stack = [[0, W, 0]];
+        while (stack.length) {
+          const [lo, hi, d] = stack.pop();
+          if (d >= depth || hi - lo <= 1) {
+            for (let i = lo; i < hi && i < W; i++) mask[i] = 1;
+            continue;
+          }
+          const third = Math.floor((hi - lo) / 3);
+          const a1 = lo, b1 = lo + third;
+          const a2 = lo + 2 * third, b2 = hi;
+          stack.push([a1, b1, d + 1]);
+          stack.push([a2, b2, d + 1]);
+        }
+      }
+      return mask;
+    }
+
+    function incursionDisplace(base, residue01, external01, gate, useSigned) {
+      const n = base.length;
+      const incursion = new Array(n), unionResid = new Array(n), disp = new Array(n).fill(0);
+      for (let i = 0; i < n; i++) {
+        const r = residue01[i] ? 1 : 0;
+        const e = external01[i] ? 1 : 0;
+        incursion[i] = (r ^ e) >>> 0;
+        unionResid[i] = (r | incursion[i]) >>> 0;
+        if (unionResid[i]) {
+          const dir = gate ? (gate[i] || 1) : 1;
+          const sgn = useSigned ? (base[i] === 0 ? 1 : Math.sign(base[i])) : 1;
+          disp[i] = dir * sgn;
+        }
+      }
+      return { incursion, unionResid, displacement: disp };
+    }
+
+    function fnv1a32(bytes) {
+      let h = 0x811c9dc5 >>> 0;
+      for (const b of bytes) { h ^= (b & 0xff); h = Math.imul(h, 0x01000193) >>> 0; }
+      return h >>> 0;
+    }
+    function hex32(n) { return '0x' + (n >>> 0).toString(16).padStart(8, '0'); }
+
+    function delta1MetaFold(width, seed, external01, opts) {
+      const { kappa, phaseCombined, useSigned } = opts;
+      const base = deltaSeed(width, seed);
+      const { gate, phase } = kappaGate(width, seed, kappa, phaseCombined);
+      const folded0 = foldOnce(base);
+      const folded = clampNoZero(folded0, gate); // enforce Δ ≠ 0
+      const residue = differenceStack(base, folded);
+      const { incursion, unionResid, displacement } = incursionDisplace(base, residue, external01, gate, useSigned);
+      return {
+        seed, width,
+        base, residue, external: external01,
+        kappa_gate: gate, kappa_phase: phase,
+        incursion, displacement,
+        folded,
+        summary: {
+          residue_mass: residue.reduce((a, b) => a + b, 0),
+          incursion_mass: incursion.reduce((a, b) => a + b, 0),
+          union_mass: unionResid.reduce((a, b) => a + b, 0),
+          residue_hash: hex32(fnv1a32(residue)),
+          external_hash: hex32(fnv1a32(external01))
+        }
+      };
+    }
+
+    // --- Fibonacci band partitions (golden-ratio scale) ---
+    function fibonacciBands(W) {
+      const bands = [];
+      let a = 1, b = 1;
+      let pos = 0;
+      // Generate Fibonacci sequence until we exceed width
+      while (pos < W) {
+        const width = Math.min(a, W - pos);
+        bands.push({ start: pos, end: pos + width, fib: a });
+        pos += width;
+        const next = a + b;
+        a = b;
+        b = next;
+      }
+      return bands;
+    }
+
+    // --- Zero top/bottom classification (thermocline orientation) ---
+    function zeroProfile(base, gate, negTop) {
+      // For each zero in base, see which direction the clamp would push it.
+      // gate[i] is +1/-1; thermocline flips the visual orientation when negTop=true.
+      const idx = [];
+      for (let i = 0; i < base.length; i++) if (base[i] === 0) idx.push(i);
+      let top = 0, bottom = 0;
+      for (const i of idx) {
+        const post = gate[i];                      // clamp direction (+1 or -1)
+        const signAdjusted = negTop ? -post : post;
+        if (signAdjusted < 0) top++; else if (signAdjusted > 0) bottom++;
+      }
+      return {
+        zero_top_count: top,
+        zero_bottom_count: bottom,
+        zero_top_ratio: idx.length ? top / idx.length : 0,
+        zero_bottom_ratio: idx.length ? bottom / idx.length : 0
+      };
+    }
+
+    // --- Zero-event analytics (Δ₁ "sedimentary" view) ---
+    function zeroStats(base) {
+      const W = base.length;
+      const idx = [];
+      for (let i = 0; i < W; i++) if (base[i] === 0) idx.push(i);
+
+      const gaps = [];
+      if (idx.length > 0) {
+        for (let k = 0; k < idx.length; k++) {
+          const a = idx[k], b = idx[(k + 1) % idx.length];
+          gaps.push(b >= a ? (b - a) : (W - a + b)); // cyclic distance
+        }
+      }
+      const gap_min = gaps.length ? Math.min(...gaps) : 0;
+      const gap_max = gaps.length ? Math.max(...gaps) : 0;
+      const gap_mean = gaps.length ? gaps.reduce((s, x) => s + x, 0) / gaps.length : 0;
+
+      // tiny preview (first 24)
+      const gap_preview = gaps.slice(0, Math.min(24, gaps.length));
+      return {
+        zero_count: idx.length,
+        zero_density: idx.length / W,
+        gap_min, gap_max, gap_mean,
+        gap_preview
+      };
+    }
+
+    // ===== UI/Render =====
+    let auto = false, rafId = null;
+    const PAGE_MOD = 1477;
+    const PHI_STEP = 233;  // Golden-ratio step for quasi-periodic orbit
+
+    // Buffer cache to avoid GC churn at huge W
+    const cache = { W: 0, T: null, B: null, M: null, S: null };
+    function getBuffers(W, wantM, wantS) {
+      if (cache.W !== W || !cache.T) {
+        cache.W = W;
+        cache.T = new Int8Array(W);
+        cache.B = new Int8Array(W);
+      }
+      cache.M = wantM ? (cache.M && cache.M.length === W ? cache.M : new Int8Array(W)) : null;
+      cache.S = wantS ? (cache.S && cache.S.length === W ? cache.S : new Float32Array(W)) : null;
+      return cache;
+    }
+
+    // Hi-DPI canvas support
+    function fitCanvas(id) {
+      const c = document.getElementById(id), dpr = window.devicePixelRatio || 1;
+      const rect = c.getBoundingClientRect();
+      c.width = Math.floor(rect.width * dpr);
+      c.height = Math.floor(rect.height * dpr);
+      c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function resizeAll() {
+      fitCanvas('canvas');
+      fitCanvas('pointCloud');
+      render();
+    }
+
+    // Helper: get CSS-space metrics
+    function metrics(c) {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = c.getBoundingClientRect();
+      return { dpr, cssW: rect.width, cssH: rect.height };
+    }
+
+    function getParams() {
+      const seed = document.getElementById('seedInput').value.trim() || 'October 18, 2025';
+      const widthRaw = parseInt(document.getElementById('widthInput').value);
+      const width = Math.max(33, widthRaw || 1477);
+      const kappaRaw = parseInt(document.getElementById('kappaInput').value);
+      const kappa = Math.max(1, kappaRaw || 432);
+      const phaseOffset = parseInt(document.getElementById('phaseInput').value);
+      const pageRaw = parseInt(document.getElementById('pageInput').value) || 0;
+      const page = ((pageRaw % PAGE_MOD) + PAGE_MOD) % PAGE_MOD;  // normalize to [0, 1476]
+      const phaseCombined = (phaseOffset + page) % PAGE_MOD; // page pop + slider micro-tune, wrapped
+      const maskType = document.getElementById('maskType').value;
+      const depth = parseInt(document.getElementById('depthInput').value);
+      const bandWidth = parseInt(document.getElementById('bandWidthInput').value);
+      const useSigned = document.getElementById('useSigned').checked;
+      return { seed, width, kappa, phaseCombined, phaseOffset, page, maskType, depth, bandWidth, useSigned };
+    }
+
+    function syncControl(name) {
+      const slider = document.getElementById(name + 'Slider');
+      const input = document.getElementById(name + 'Input');
+      const display = document.getElementById(name + 'Value');
+      const val = slider.value;
+      input.value = val;
+      display.textContent = val;
+    }
+
+    function updateControls() {
+      syncControl('width');
+      syncControl('kappa');
+      syncControl('phase');
+      syncControl('depth');
+      syncControl('bandWidth');
+      const maskType = document.getElementById('maskType').value;
+      document.getElementById('cantorOptions').style.display = maskType === 'cantor' ? 'block' : 'none';
+      document.getElementById('bandOptions').style.display = maskType === 'band' ? 'block' : 'none';
+    }
+
+    function render() {
+      const startTime = performance.now();
+      const loading = document.getElementById('loading');
+      const statusEl = document.getElementById('status');
+      const errorEl = document.getElementById('error');
+      
+      try {
+        // Show loading for large widths
+        const params = getParams();
+        if (params.width > 10000) {
+          loading.classList.add('active');
+          setTimeout(() => renderCore(params, startTime, loading, statusEl, errorEl), 10);
+        } else {
+          renderCore(params, startTime, loading, statusEl, errorEl);
+        }
+      } catch (err) {
+        handleError(err, errorEl, loading);
+      }
+    }
+    
+    function renderCore(params, startTime, loading, statusEl, errorEl) {
+      try {
+        errorEl.style.display = 'none';
+      const opts = { kappa: params.kappa, phaseCombined: params.phaseCombined, useSigned: params.useSigned };
+      const negTop = document.getElementById('negTop').checked;
+      const showSed = document.getElementById('showSed').checked;
+      const showFib = document.getElementById('showFib').checked;
+      const showSolv = document.getElementById('showSolvent').checked;
+      const showRidge = document.getElementById('showRidge').checked;
+      const maskOpts = params.maskType === 'cantor' ? { depth: params.depth } : { width: params.bandWidth };
+      // compute effective depth for summary (mirrors makeTargetMask clamp)
+      const effDepth = params.maskType === 'cantor' ? Math.min(Math.max(1, Math.min(1477, params.depth)), Math.max(1, Math.floor(Math.log(params.width) / Math.log(3)) + 2)) : null;
+      const target = makeTargetMask(params.width, params.maskType, params.maskType === 'cantor' ? { depth: effDepth } : maskOpts);
+      const result = delta1MetaFold(params.width, params.seed, target, opts);
+      const zstats = zeroStats(result.base);
+      const zprof = zeroProfile(result.base, result.kappa_gate, negTop);
+
+      // Solvent and Ridge field computation (single-pass for performance)
+      const gate = result.kappa_gate;
+      const folded = result.folded;
+      const W = params.width;
+      
+      // No-zero clamp enforcement (Polaris law)
+      if (debugMode && folded.some(v => v === 0)) {
+        console.error('⚠️ No-zero clamp failed — Polaris law violated');
+      }
+      
+      // Fused single-pass computation (cached typed arrays for large W)
+      const { T, B, M, S } = getBuffers(W, showSolv, showRidge);
+      let dAligned = 0, dOpposed = 0;
+      
+      for (let i = 0; i < W; i++) {
+        const s = folded[i] >= 0 ? 1 : -1;
+        const t = negTop ? -s : s;
+        const b = negTop ? s : -s;
+        T[i] = t; B[i] = b;
+        const d = (t === b) ? 0 : 1;
+        d ? dOpposed++ : dAligned++;
+        if (showSolv) M[i] = d ? gate[i] : t;
+        if (showRidge) S[i] = (t * b) / (Math.abs(t - b) + 1e-6);
+      }
+
+      // Invariants: self-tests matching theory
+      const noZero = !folded.some(v => v === 0);
+      let unionMassCheck = 0;
+      for (let i = 0; i < W; i++) { if (result.residue[i] || target[i]) unionMassCheck++; }
+      const unionOk = (unionMassCheck === result.summary.union_mass);
+      const solventAligned = dAligned;  // T==B (middle == T)
+      const solventGate = dOpposed;     // T!=B (middle == gate)
+      // Invariant logging (debug mode)
+      if (debugMode) {
+        console.log('📊 Invariants:', { noZero, unionOk, solventAligned, solventGate });
+        if (!noZero) console.warn('❌ No-zero law violated');
+        if (!unionOk) console.warn('❌ Union identity violated');
+      }
+
+      // Bars canvas (CSS-space coordinates)
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const { cssW, cssH } = metrics(canvas);
+      const barWidth = cssW / W;
+      const baselineBars = cssH / 2;
+      ctx.clearRect(0, 0, cssW, cssH);
+
+      // Sampling optimization: for large widths, aggregate bars into pixel columns
+      const pxCols = Math.max(1, Math.floor(cssW));
+      const step = Math.max(1, Math.floor(W / pxCols));
+      
+      // Track arg-max ridge for marker + collect ridge peaks
+      let bestRidgeX = -1, bestRidgeScore = -1e9;
+      const ridgePeaks = [];
+
+      // Bars with incursion glow
+      for (let i = 0; i < W; i += step) {
+        // Aggregate over [i, i+step)
+        let d = 0, residue = 0, incursion = 0, phase = 0, hasZero = false;
+        const hi = Math.min(W, i + step);
+        for (let j = i; j < hi; j++) {
+          d += result.displacement[j];
+          residue |= result.residue[j];
+          incursion |= result.incursion[j];
+          phase += result.kappa_phase[j];
+          hasZero |= (result.base[j] === 0);
+        }
+        d = d !== 0 ? Math.sign(d) : 0;  // majority direction
+        phase /= (hi - i);                // average phase
+        const x = (i / W) * cssW;
+        const w = Math.max(1, (step / W) * cssW);  // at least 1px wide
+        
+        const r = Math.floor((phase + 1) * 127.5);
+        const g = 50;
+        const b = Math.floor((1 - phase) * 127.5);
+        
+        // Incursion glow (XOR push happened here)
+        if (incursion) {
+          ctx.fillStyle = 'rgba(255, 214, 102, 0.25)';
+          ctx.fillRect(x, baselineBars - 55, w, 110);
+        }
+        
+        // Bar (Thermocline rule: negative pressure drawn on TOP when enabled)
+        ctx.fillStyle = residue ? `rgba(${r}, ${g}, ${b}, 0.85)` : `rgba(${r}, ${g}, ${b}, 0.4)`;
+        const signAdjusted = negTop ? -d : d;
+        const h = signAdjusted * 50;
+        ctx.fillRect(x, baselineBars - h, w, h);
+        
+        // Sediment overlay at zero-events (base[i] == 0)
+        if (showSed && hasZero) {
+          // faint layered hatch centered around baseline (looks like "deposit")
+          ctx.fillStyle = 'rgba(200, 200, 200, 0.12)';
+          const hatchH = 18;  // visual thickness of the "sediment band"
+          ctx.fillRect(x, baselineBars - hatchH/2, w, hatchH);
+          // subtle line for texture
+          ctx.fillStyle = 'rgba(255,255,255,0.10)';
+          ctx.fillRect(x, baselineBars + (negTop ? -6 : 6), w, 1);
+        }
+        
+        // Residue flip marker
+        if (residue) {
+          ctx.fillStyle = '#ffd166';
+          ctx.fillRect(x, baselineBars - Math.sign(h) * 3, w, 2);
+        }
+
+        // Solvent overlay: instant middle layer (cyan for +1, magenta for -1)
+        if (showSolv) {
+          let mVal = 0, mCnt = 0;
+          for (let j = i; j < hi; j++) { mVal += M[j]; mCnt++; }
+          const mAvg = mCnt ? Math.sign(mVal) : 0;
+          if (mAvg !== 0) {
+            ctx.fillStyle = (mAvg > 0) ? 'rgba(0, 255, 255, 0.25)' : 'rgba(255, 0, 255, 0.25)';
+            ctx.fillRect(x, baselineBars - 1.5, w, 3);
+          }
+        }
+
+        // Ridge overlay: coherence field (yellow veil on high alignment)
+        if (showRidge && S) {
+          let sVal = 0, sCnt = 0;
+          for (let j = i; j < hi; j++) { sVal += S[j]; sCnt++; }
+          const sAvg = sCnt ? sVal / sCnt : 0;
+          const sDisplay = Math.min(5, Math.max(0, sAvg));
+          if (sDisplay > 1.0) {
+            ctx.fillStyle = 'rgba(255, 255, 0, 0.35)';
+            ctx.fillRect(x, 0, w, cssH);
+          }
+          // Track best ridge position and collect peaks
+          if (sAvg > bestRidgeScore) {
+            bestRidgeScore = sAvg;
+            bestRidgeX = x + w / 2;
+          }
+          if (sDisplay > 1.0) {
+            ridgePeaks.push({ iStart: i, iEnd: hi, s: sAvg });
+          }
+        }
+      }
+      
+      // Fibonacci band overlay (golden-ratio partitions)
+      if (showFib) {
+        const bands = fibonacciBands(W);
+        let toggle = 0;
+        bands.forEach(band => {
+          const x1 = (band.start / W) * cssW;
+          const x2 = (band.end / W) * cssW;
+          // Subtle alternating shade
+          ctx.fillStyle = toggle ? 'rgba(255, 215, 0, 0.04)' : 'rgba(144, 238, 144, 0.04)';
+          ctx.fillRect(x1, 0, x2 - x1, cssH);
+          // Band boundary line
+          ctx.strokeStyle = 'rgba(255, 215, 0, 0.15)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x2, 0);
+          ctx.lineTo(x2, cssH);
+          ctx.stroke();
+          toggle ^= 1;
+        });
+      }
+      
+      // Arg-max ridge marker (slime decision line)
+      if (showRidge && bestRidgeX >= 0) {
+        ctx.strokeStyle = 'rgba(255, 255, 0, 0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(bestRidgeX, 0);
+        ctx.lineTo(bestRidgeX, cssH);
+        ctx.stroke();
+      }
+      
+      // Baseline
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, baselineBars);
+      ctx.lineTo(cssW, baselineBars);
+      ctx.stroke();
+
+      // Point cloud (sampled for large W)
+      const pcCanvas = document.getElementById('pointCloud');
+      const pcCtx = pcCanvas.getContext('2d');
+      const m2 = metrics(pcCanvas);
+      const baselineCloud = m2.cssH / 2;
+      pcCtx.clearRect(0, 0, m2.cssW, m2.cssH);
+      const time = Date.now() / 1000;
+
+      const pxColsPC = Math.max(1, Math.floor(m2.cssW));
+      const stepPC = Math.max(1, Math.floor(W / pxColsPC));
+
+      for (let i = 0; i < W; i += stepPC) {
+        // Aggregate sign & phase across this column
+        let d = 0, phase = 0, cnt = 0;
+        const hi = Math.min(W, i + stepPC);
+        for (let j = i; j < hi; j++) {
+          if (result.displacement[j]) d += result.displacement[j];
+          phase += result.kappa_phase[j];
+          cnt++;
+        }
+        if (!d) continue;
+        phase /= cnt;
+        const r = Math.floor((phase + 1) * 127.5);
+        const g = Math.floor(200 * Math.abs(Math.sin(phase * 2 + time)));
+        const b = Math.floor((1 - phase) * 127.5);
+        pcCtx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.8)`;
+        const x = (i / W) * m2.cssW + Math.sin(phase + time) * 20;
+        const y = baselineCloud + (d > 0 ? 50 : -50) + Math.cos(phase + time) * 20;
+        pcCtx.beginPath();
+        pcCtx.arc(x, y, 2 + Math.abs(phase) * 2, 0, 2 * Math.PI);
+        pcCtx.fill();
+      }
+
+      lastSummary = {
+        ...result.summary,
+        phase_flip_constant: 1477,     // keep your Polaris resonance
+        width_max_lock: 500000,        // spec-consistent UI cap
+        zero_stats: zstats,            // <-- NEW analytics block
+        zero_profile: zprof,           // top vs bottom event classification
+        solvent_aligned: dAligned,     // columns where top/bottom match (no tension)
+        solvent_from_gate: dOpposed,   // columns where middle resolves via gate
+        ridge_peaks: ridgePeaks.slice(0, 2048),  // structural slime path (capped)
+        ridge_best_index: bestRidgeX >= 0 ? Math.round((bestRidgeX / cssW) * W) : -1,
+        invariants: { noZero, unionOk, solventAligned, solventGate },
+        depth_requested: params.depth,
+        depth_effective: effDepth,
+        seed: params.seed,
+        width: params.width,
+        kappa: params.kappa,
+        page: params.page,             // decomposed phase state
+        phase_offset: params.phaseOffset,
+        phase_combined: params.phaseCombined,
+        maskType: params.maskType,
+        thermocline_neg_on_top: negTop,
+        sediment_overlay: showSed,
+        fibonacci_bands: showFib,
+        timestamp: new Date().toISOString()
+      };
+      document.getElementById('summary').textContent = JSON.stringify(lastSummary, null, 2);
+      
+      // Performance tracking
+      const elapsed = performance.now() - startTime;
+      perfStats.lastRenderMs = elapsed;
+      perfStats.renderCount++;
+      
+      if (debugMode) {
+        console.log(`⚡ Render #${perfStats.renderCount}: ${elapsed.toFixed(2)}ms (W=${params.width})`);
+      }
+      
+      statusEl.textContent = `Rendered W=${params.width} in ${elapsed.toFixed(0)}ms • Page ${params.page}/${PAGE_MOD-1} • Ridge peaks: ${lastSummary.ridge_peaks.length}`;
+      loading.classList.remove('active');
+      
+      } catch (err) {
+        handleError(err, document.getElementById('error'), loading);
+      }
+    }
+    
+    function handleError(err, errorEl, loading) {
+      console.error('❌ Render error:', err);
+      errorEl.textContent = `Error: ${err.message}\n\nPlease try reducing width or adjusting parameters.`;
+      errorEl.style.display = 'block';
+      loading.classList.remove('active');
+      document.getElementById('status').textContent = 'Error occurred — check console';
+    }
+
+    // RAF gating: only loop when Auto is on
+    function tick() {
+      if (!auto) {
+        rafId = null;
+        return;
+      }
+      // advance page with golden-step (quasi-periodic orbit)
+      const pageEl = document.getElementById('pageInput');
+      pageEl.value = String((parseInt(pageEl.value || '0', 10) + PHI_STEP) % PAGE_MOD);
+      render();
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function start() {
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    }
+
+    function stop() {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    }
+
+    // ===== Export helpers =====
+    function savePNG(canvasId, filename) {
+      const canvas = document.getElementById(canvasId);
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    function saveJSON(obj, filename) {
+      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = URL.createObjectURL(blob);
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    let lastSummary = {};
+
+    // Helper to sync number input -> slider
+    function syncFromInput(name) {
+      const slider = document.getElementById(name + 'Slider');
+      const input = document.getElementById(name + 'Input');
+      const display = document.getElementById(name + 'Value');
+      const min = parseInt(slider.min);
+      const max = parseInt(slider.max);
+      let val = parseInt(input.value) || parseInt(slider.value);
+      val = Math.max(min, Math.min(max, val));
+      slider.value = val;
+      input.value = val;
+      display.textContent = val;
+    }
+
+    // Events
+    document.getElementById('runBtn').addEventListener('click', render);
+    document.getElementById('seedInput').addEventListener('input', render);
+    
+    // Slider events
+    document.getElementById('widthSlider').addEventListener('input', () => { updateControls(); render(); });
+    document.getElementById('kappaSlider').addEventListener('input', () => { updateControls(); render(); });
+    document.getElementById('phaseSlider').addEventListener('input', () => { updateControls(); render(); });
+    document.getElementById('depthSlider').addEventListener('input', () => { updateControls(); render(); });
+    document.getElementById('bandWidthSlider').addEventListener('input', () => { updateControls(); render(); });
+    
+    // Number input events
+    document.getElementById('widthInput').addEventListener('input', () => { syncFromInput('width'); render(); });
+    document.getElementById('kappaInput').addEventListener('input', () => { syncFromInput('kappa'); render(); });
+    document.getElementById('phaseInput').addEventListener('input', () => { syncFromInput('phase'); render(); });
+    document.getElementById('depthInput').addEventListener('input', () => { syncFromInput('depth'); render(); });
+    document.getElementById('bandWidthInput').addEventListener('input', () => { syncFromInput('bandWidth'); render(); });
+    
+    document.getElementById('maskType').addEventListener('change', () => { updateControls(); render(); });
+    document.getElementById('useSigned').addEventListener('change', render);
+    document.getElementById('negTop').addEventListener('change', render);
+    document.getElementById('showSed').addEventListener('change', render);
+    document.getElementById('showFib').addEventListener('change', render);
+    document.getElementById('showSolvent').addEventListener('change', render);
+    document.getElementById('showRidge').addEventListener('change', render);
+    document.getElementById('popBtn').addEventListener('click', () => { render(); });
+    document.getElementById('autoBtn').addEventListener('click', (e) => {
+      auto = !auto;
+      e.target.textContent = auto ? 'Auto ▣' : 'Auto ▷';
+      auto ? start() : stop();
+    });
+    document.getElementById('exportBarsPNG').addEventListener('click', () => savePNG('canvas', 'delta1_bars.png'));
+    document.getElementById('exportCloudPNG').addEventListener('click', () => savePNG('pointCloud', 'delta1_cloud.png'));
+    document.getElementById('exportJSON').addEventListener('click', () => saveJSON(lastSummary, 'delta1_summary.json'));
+    document.getElementById('toggleDebug').addEventListener('click', () => {
+      debugMode = !debugMode;
+      const btn = document.getElementById('toggleDebug');
+      btn.textContent = debugMode ? '🔍 Debug ✓' : '🔍 Debug';
+      console.log(debugMode ? '🔍 Debug mode enabled' : '🔍 Debug mode disabled');
+      if (debugMode) {
+        console.log('📊 Performance:', perfStats);
+        console.log('💾 Cache:', { W: cache.W, hasTB: !!cache.T, hasM: !!cache.M, hasS: !!cache.S });
+      }
+    });
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      if (e.code === 'Space') { e.preventDefault(); render(); }
+      else if (e.code === 'KeyA') { document.getElementById('autoBtn').click(); }
+      else if (e.code === 'KeyP') { document.getElementById('popBtn').click(); }
+    });
+
+    // ===== HEADLESS BATCH MODE (v2.0) =====
+    (function initHeadlessMode() {
+      const params = new URLSearchParams(window.location.search);
+      if (!params.has('headless')) return;
+      
+      console.log('🤖 Headless mode activated');
+      
+      // Parse configuration
+      const config = {
+        seed: params.get('seed') || 'October 18, 2025',
+        width: Math.min(500000, Math.max(33, parseInt(params.get('W') || params.get('width') || '1477'))),
+        kappa: Math.max(1, parseInt(params.get('kappa') || '432')),
+        phaseOffset: parseInt(params.get('phase') || '0'),
+        page: parseInt(params.get('page') || '0'),
+        maskType: params.get('mask') || 'cantor',
+        depth: parseInt(params.get('depth') || '1477'),
+        bandWidth: parseInt(params.get('bandWidth') || '33'),
+        useSigned: params.get('useSigned') !== 'false',
+        negTop: params.get('negTop') !== 'false',
+        showSed: params.get('showSed') === 'true',
+        showFib: params.get('showFib') === 'true',
+        showSolvent: params.get('showSolvent') === 'true',
+        showRidge: params.get('showRidge') === 'true',
+        export: params.get('export') || 'json',
+        autoDownload: params.get('autoDownload') !== 'false',
+        hideUI: params.get('hideUI') !== 'false',
+        delay: parseInt(params.get('delay') || '500')
+      };
+      
+      console.log('⚙️  Config:', config);
+      
+      // Hide UI if requested
+      if (config.hideUI) {
+        document.body.classList.add('headless');
+      }
+      
+      // Apply configuration on load
+      window.addEventListener('load', () => {
+        console.log('⚡ Applying headless parameters...');
+        
+        // Set all controls
+        document.getElementById('seedInput').value = config.seed;
+        document.getElementById('widthInput').value = config.width;
+        document.getElementById('kappaInput').value = config.kappa;
+        document.getElementById('phaseInput').value = config.phaseOffset;
+        document.getElementById('pageInput').value = config.page;
+        document.getElementById('maskType').value = config.maskType;
+        document.getElementById('depthInput').value = config.depth;
+        document.getElementById('bandWidthInput').value = config.bandWidth;
+        document.getElementById('useSigned').checked = config.useSigned;
+        document.getElementById('negTop').checked = config.negTop;
+        document.getElementById('showSed').checked = config.showSed;
+        document.getElementById('showFib').checked = config.showFib;
+        document.getElementById('showSolvent').checked = config.showSolvent;
+        document.getElementById('showRidge').checked = config.showRidge;
+        
+        updateControls();
+        
+        // Render and export
+        setTimeout(() => {
+          console.log('🚀 Rendering...');
+          render();
+          
+          // Auto-export if enabled
+          if (config.autoDownload) {
+            setTimeout(() => {
+              console.log('📦 Exporting...');
+              
+              // Generate smart filename
+              const safeSeed = lastSummary.seed.replace(/[^\w]/g, '_').substring(0, 20);
+              const filename = `delta1_${safeSeed}_W${lastSummary.width}_p${lastSummary.page}`;
+              
+              let exportCount = 0;
+              
+              if (config.export === 'json' || config.export === 'all') {
+                saveJSON(lastSummary, `${filename}.json`);
+                exportCount++;
+                console.log('✓ JSON exported');
+              }
+              
+              if (config.export === 'bars' || config.export === 'all') {
+                savePNG('canvas', `${filename}_bars.png`);
+                exportCount++;
+                console.log('✓ Bars PNG exported');
+              }
+              
+              if (config.export === 'cloud' || config.export === 'all') {
+                savePNG('pointCloud', `${filename}_cloud.png`);
+                exportCount++;
+                console.log('✓ Cloud PNG exported');
+              }
+              
+              console.log(`✅ Headless export complete: ${exportCount} files`);
+              
+              // Store result for external access
+              window.delta1_headless_result = {
+                config,
+                summary: lastSummary,
+                filename,
+                exportCount,
+                timestamp: new Date().toISOString()
+              };
+            }, config.delay);
+          } else {
+            console.log('ℹ️  Auto-download disabled');
+          }
+        }, 100);
+      });
+    })();
+    // ===== END HEADLESS MODE =====
+
+    // Init
+    window.addEventListener('resize', resizeAll);
+    updateControls();
+    resizeAll(); // sets up DPR canvases and renders
+  </script>
+</body>
+</html>
