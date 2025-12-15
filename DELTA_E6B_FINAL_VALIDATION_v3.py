@@ -65,10 +65,10 @@ class DeltaE6BFinalValidatorV3:
         
         constants = [
             ('Earth Radius (NM)', EARTH_RADIUS_NM, 3440.1, 0.1),
-            ('DELTA Ring Size (N)', 1477, 1477, 0),
+            ('DELTA Ring Size (N)', 1466, 1466, 0),
             ('Magnetic Coupling (K_MAG)', K_MAG, 1e-5, 1e-7),
             ('Phase Alpha', PHASE_ALPHA, 0.1, 0.001),
-            ('Phase Lambda', PHASE_LAMBDA, 1477/6, 0.1),
+            ('Phase Lambda', PHASE_LAMBDA, 1466/6, 0.1),
             ('Confidence Weight Distance', CONF_W_DISTANCE, 0.7, 0.01),
             ('Confidence Weight Phase', CONF_W_PHASE, 0.3, 0.01),
             ('Base Fuel Factor', BASE_FUEL_FACTOR, 0.08, 0.001)
@@ -282,7 +282,7 @@ class DeltaE6BFinalValidatorV3:
             },
             {
                 'name': 'Distance decay (large distance approaches 1.0)',
-                'test': lambda: abs(enhanced_phase_harmony(1, 1, 1477) - 1.0) < 0.1
+                'test': lambda: abs(enhanced_phase_harmony(1, 1, 1466) - 1.0) < 0.1
             },
             {
                 'name': 'Symmetry property (harmony(a,b) = harmony(b,a))',
@@ -333,7 +333,7 @@ class DeltaE6BFinalValidatorV3:
             },
             {
                 'name': 'Maximum distance, opposite phase = 0%',
-                'test': lambda: abs(enhanced_confidence(1477, -1) - 0.0) < 0.1
+                'test': lambda: abs(enhanced_confidence(1466, -1) - 0.0) < 0.1
             },
             {
                 'name': 'Confidence bounds [0, 100]',
