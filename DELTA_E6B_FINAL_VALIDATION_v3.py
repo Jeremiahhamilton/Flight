@@ -33,6 +33,10 @@ HAVERSINE_TOL_FRACTION = 0.01  # 1% tolerance for haversine distance validation
 HAVERSINE_TOL_NM = 10.0  # Absolute tolerance in NM for large distances
 FINITE_DIFF_TOL = 1e-9  # Tolerance for finite difference slope checks
 MAG_GRADIENT_TEST_INTERVAL = 100  # Gradient interval for magnetic coupling slope tests
+PHASE_NEUTRAL_TOL = 0.01  # Tolerance for neutral phase equality check
+PHASE_DISTANCE_DECAY_TOL = 0.1  # Tolerance for distance decay check
+PHASE_SYMMETRY_TOL = 0.001  # Tolerance for phase harmony symmetry check
+CONFIDENCE_TOL = 0.1  # Tolerance for confidence score checks
 
 def _w(s):
     """Write without newline."""
@@ -311,11 +315,6 @@ class DeltaE6BFinalValidatorV3:
         _ln("VALIDATION 3: Phase Harmony Mathematical Proof")
         _ln("-" * 50)
         
-        # Define clear tolerance variables
-        neutral_phase_tol = 0.01
-        distance_decay_tol = 0.1
-        symmetry_tol = 0.001
-        
         properties = [
             {
                 'name': 'Same phase, zero distance (maximum > 1.0)',
@@ -327,16 +326,16 @@ class DeltaE6BFinalValidatorV3:
             },
             {
                 'name': 'Neutral phase always equals 1.0',
-                'test': lambda: abs(enhanced_phase_harmony(1, 0, 100) - 1.0) < neutral_phase_tol
+                'test': lambda: abs(enhanced_phase_harmony(1, 0, 100) - 1.0) < PHASE_NEUTRAL_TOL
             },
             {
                 'name': 'Distance decay (large distance approaches 1.0)',
-                'test': lambda: abs(enhanced_phase_harmony(1, 1, 1466) - 1.0) < distance_decay_tol
+                'test': lambda: abs(enhanced_phase_harmony(1, 1, 1466) - 1.0) < PHASE_DISTANCE_DECAY_TOL
             },
             {
                 'name': 'Symmetry property (harmony(a,b) = harmony(b,a))',
                 'test': lambda: abs(enhanced_phase_harmony(1, -1, 100) - 
-                                  enhanced_phase_harmony(-1, 1, 100)) < symmetry_tol
+                                  enhanced_phase_harmony(-1, 1, 100)) < PHASE_SYMMETRY_TOL
             }
         ]
         
@@ -375,17 +374,14 @@ class DeltaE6BFinalValidatorV3:
         _ln("VALIDATION 4: Confidence Mathematical Proof")
         _ln("-" * 45)
         
-        # Define clear tolerance variables
-        confidence_tol = 0.1
-        
         properties = [
             {
                 'name': 'Zero distance, same phase = 100%',
-                'test': lambda: abs(enhanced_confidence(0, 1) - 100.0) < confidence_tol
+                'test': lambda: abs(enhanced_confidence(0, 1) - 100.0) < CONFIDENCE_TOL
             },
             {
                 'name': 'Maximum distance, opposite phase = 0%',
-                'test': lambda: abs(enhanced_confidence(1466, -1) - 0.0) < confidence_tol
+                'test': lambda: abs(enhanced_confidence(1466, -1) - 0.0) < CONFIDENCE_TOL
             },
             {
                 'name': 'Confidence bounds [0, 100]',
