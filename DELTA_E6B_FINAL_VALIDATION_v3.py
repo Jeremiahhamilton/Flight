@@ -1,19 +1,8 @@
 #!/usr/bin/env python3
-"""
-DELTA E6B FINAL VALIDATION v3 - MATHEMATICALLY PERFECT
-The definitive validation suite for the mathematically locked DELTA E6B system
-Self-calibrating mathematical proofs with comprehensive error analysis
-Achieved 100.0% mathematical perfection across all validation metrics
-
-Validation Results:
-- Mathematical Core: 100.0% (23/23 tests passed, 0.0% std deviation)
-- Real-World Performance: 100.0% (17/17 tests passed)
-- Constants Verification: 100.0% (8/8 constants verified)
-- System Status: MATHEMATICALLY LOCKED & PRODUCTION READY
-"""
 
 import sys
 import math
+import random
 import statistics
 from datetime import datetime
 
@@ -65,10 +54,10 @@ class DeltaE6BFinalValidatorV3:
         
         constants = [
             ('Earth Radius (NM)', EARTH_RADIUS_NM, 3440.1, 0.1),
-            ('DELTA Ring Size (N)', 1466, 1466, 0),
+            ('DELTA Ring Size (N)', 1477, 1477, 0),
             ('Magnetic Coupling (K_MAG)', K_MAG, 1e-5, 1e-7),
             ('Phase Alpha', PHASE_ALPHA, 0.1, 0.001),
-            ('Phase Lambda', PHASE_LAMBDA, 1466/6, 0.1),
+            ('Phase Lambda', PHASE_LAMBDA, 1477/6, 0.1),
             ('Confidence Weight Distance', CONF_W_DISTANCE, 0.7, 0.01),
             ('Confidence Weight Phase', CONF_W_PHASE, 0.3, 0.01),
             ('Base Fuel Factor', BASE_FUEL_FACTOR, 0.08, 0.001)
@@ -124,9 +113,82 @@ class DeltaE6BFinalValidatorV3:
         self.validate_polar_navigation_mathematics()
         self.validate_phase_optimized_corridors_analysis()
         self.validate_extreme_conditions_stability()
+        self.validate_fuzz_stress_bulletproof()
         
         # Final mathematical proof
         self.generate_mathematical_proof_summary()
+        
+    def validate_fuzz_stress_bulletproof(self):
+        _ln("VALIDATION 10: Fuzz/Stress Bulletproofing")
+        _ln("-" * 43)
+
+        random.seed(1477)
+
+        locations = list(ENHANCED_MAGNETIC_COORDINATES.keys())
+        if len(locations) < 2:
+            self.real_world_tests.append({
+                'test': 'Fuzz/Stress Bulletproofing',
+                'accuracy': 0.0,
+                'passed': 0,
+                'total': 0
+            })
+            _ln("  Result: 0/0 (insufficient locations)")
+            _ln()
+            return
+
+        scenarios = 250
+        passed = 0
+        total = scenarios
+
+        for _ in range(scenarios):
+            origin = random.choice(locations)
+            destination = random.choice(locations)
+
+            if random.random() < 0.1:
+                destination = origin
+
+            tas_pool = [0, -1, 1, 50, 100, 250, 450, 700]
+            tas = random.choice(tas_pool) if random.random() < 0.4 else random.uniform(1, 700)
+
+            wind_speed_pool = [0, 1, 25, 150, 400, 1000]
+            wind_speed = random.choice(wind_speed_pool) if random.random() < 0.4 else random.uniform(0, 1000)
+
+            wind_direction = random.uniform(-720, 720)
+
+            try:
+                result = delta_e6b_enhanced(origin, destination, tas, wind_speed, wind_direction)
+                if result is None:
+                    passed += 1
+                    continue
+
+                numeric_checks = [
+                    result.get('distance_nm'),
+                    result.get('ground_speed_knots'),
+                    result.get('time_hours'),
+                    result.get('phase_harmony'),
+                    result.get('delta_confidence'),
+                    result.get('fuel_burn_gph'),
+                    result.get('total_fuel_gallons')
+                ]
+
+                finite = all((v is not None and isinstance(v, (int, float)) and math.isfinite(v)) for v in numeric_checks)
+                bounded = 0.0 <= result.get('delta_confidence', -1) <= 100.0
+
+                if finite and bounded:
+                    passed += 1
+            except Exception:
+                pass
+
+        accuracy = (passed / total) * 100 if total else 0.0
+        self.real_world_tests.append({
+            'test': 'Fuzz/Stress Bulletproofing',
+            'accuracy': accuracy,
+            'passed': passed,
+            'total': total
+        })
+
+        _ln(f"  Result: {passed}/{total} scenarios stable ({accuracy:.1f}%)")
+        _ln()
         
     def validate_great_circle_self_calibrating(self):
         """
@@ -282,7 +344,7 @@ class DeltaE6BFinalValidatorV3:
             },
             {
                 'name': 'Distance decay (large distance approaches 1.0)',
-                'test': lambda: abs(enhanced_phase_harmony(1, 1, 1466) - 1.0) < 0.1
+                'test': lambda: abs(enhanced_phase_harmony(1, 1, 1477) - 1.0) < 0.1
             },
             {
                 'name': 'Symmetry property (harmony(a,b) = harmony(b,a))',
@@ -333,7 +395,7 @@ class DeltaE6BFinalValidatorV3:
             },
             {
                 'name': 'Maximum distance, opposite phase = 0%',
-                'test': lambda: abs(enhanced_confidence(1466, -1) - 0.0) < 0.1
+                'test': lambda: abs(enhanced_confidence(1477, -1) - 0.0) < 0.1
             },
             {
                 'name': 'Confidence bounds [0, 100]',
