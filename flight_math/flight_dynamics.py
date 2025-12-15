@@ -107,7 +107,7 @@ def bank_angle(velocity, turn_radius_m):
         float: Bank angle in degrees
     
     Example:
-        >>> round(bank_angle(50, 436.78), 2)
+        >>> round(bank_angle(50, 441.55), 2)
         30.0
     """
     if velocity < 0:
