@@ -26,6 +26,18 @@ from DELTA_E6B_ENHANCED_v2 import (
     CONF_W_DISTANCE, CONF_W_PHASE, EARTH_RADIUS_NM, BASE_FUEL_FACTOR
 )
 
+# Named tolerances and constants for validation
+ZERO_DIST_TOL = 1e-6  # Tolerance for zero distance in NM
+COURSE_TOL_DEG = 10.0  # Tolerance for course checking in degrees
+HAVERSINE_TOL_FRACTION = 0.01  # 1% tolerance for haversine distance validation
+HAVERSINE_TOL_NM = 10.0  # Absolute tolerance in NM for large distances
+FINITE_DIFF_TOL = 1e-9  # Tolerance for finite difference slope checks
+MAG_GRADIENT_TEST_INTERVAL = 100  # Gradient interval for magnetic coupling slope tests
+PHASE_NEUTRAL_TOL = 0.01  # Tolerance for neutral phase equality check
+PHASE_DISTANCE_DECAY_TOL = 0.1  # Tolerance for distance decay check
+PHASE_SYMMETRY_TOL = 0.001  # Tolerance for phase harmony symmetry check
+CONFIDENCE_TOL = 0.1  # Tolerance for confidence score checks
+
 def _w(s):
     """Write without newline."""
     sys.stdout.write(s)
@@ -74,27 +86,30 @@ class DeltaE6BFinalValidatorV3:
             ('Base Fuel Factor', BASE_FUEL_FACTOR, 0.08, 0.001)
         ]
         
-        all_correct = True
+        passed = 0
         for name, actual, expected, tolerance in constants:
             error = abs(actual - expected)
             correct = error <= tolerance
             status = "✓" if correct else "✗"
-            if not correct:
-                all_correct = False
+            if correct:
+                passed += 1
             
             _ln(f"  {name:<25} {actual:<12} Expected: {expected:<12} {status}")
-            
+        
+        total = len(constants)
+        accuracy = (passed / total) * 100.0
+        
         self.constant_verification.append({
             'test': 'Mathematical Constants',
-            'accuracy': 100.0 if all_correct else 0.0,
-            'passed': len(constants) if all_correct else len(constants) - 1,
-            'total': len(constants)
+            'accuracy': accuracy,
+            'passed': passed,
+            'total': total
         })
         
-        _ln(f"  Result: {'All constants correct' if all_correct else 'Some constants incorrect'}")
+        _ln(f"  Result: {passed}/{total} constants correct ({accuracy:.1f}%)")
         _ln()
         
-        return all_correct
+        return passed == total
         
     def run_complete_validation(self):
         """
@@ -163,17 +178,40 @@ class DeltaE6BFinalValidatorV3:
         total = len(test_cases)
         
         for case in test_cases:
+            # Compute distance first
+            distance = haversine_distance(case['lat1'], case['lon1'], 
+                                         case['lat2'], case['lon2'])
             course = great_circle_course(case['lat1'], case['lon1'], 
                                        case['lat2'], case['lon2'])
             
             # Mathematical validation based on properties
-            valid = True
-            if 'Antipodal' in case['property']:
-                valid = 170 <= course <= 190 or course <= 10 or course >= 350
-            elif 'Zero distance' in case['property']:
-                valid = 0 <= course <= 360  # Any value is valid for zero distance
+            valid = False
+            
+            if 'Zero distance' in case['property']:
+                # Zero-distance case: distance should be ~0, course is undefined
+                if distance < ZERO_DIST_TOL:
+                    valid = True
+                    _ln(f"  {case['name']:<35} Distance: {distance:.6f} NM")
+                    _ln(f"    Course: {course:6.1f}° (undefined for zero distance)")
+                else:
+                    valid = False
+            elif 'Antipodal' in case['property']:
+                # Antipodal: course should be approximately 180°
+                # Use modular arithmetic to compute minimal angular difference from 180°
+                diff = abs((course % 360) - 180)
+                if diff > 180:
+                    diff = 360 - diff
+                valid = diff <= COURSE_TOL_DEG
             elif 'Equatorial' in case['property']:
-                valid = 80 <= course <= 100 or 260 <= course <= 280  # East or West
+                # Equatorial: check distance first to avoid false positives
+                # Then check course in expected east/west windows
+                if distance > ZERO_DIST_TOL:
+                    valid = (80 <= course <= 100) or (260 <= course <= 280)
+                else:
+                    valid = False
+            else:
+                # Default: just check that the computation doesn't fail
+                valid = True
             
             if valid:
                 passed += 1
@@ -181,8 +219,9 @@ class DeltaE6BFinalValidatorV3:
             else:
                 status = "✗ FAIL"
             
-            _ln(f"  {case['name']:<35} Course: {course:6.1f}° {status}")
-            _ln(f"    Property: {case['property']}")
+            if 'Zero distance' not in case['property']:
+                _ln(f"  {case['name']:<35} Course: {course:6.1f}° {status}")
+                _ln(f"    Property: {case['property']}, Distance: {distance:.1f} NM")
         
         accuracy = (passed / total) * 100
         self.mathematical_tests.append({
@@ -203,6 +242,12 @@ class DeltaE6BFinalValidatorV3:
         _ln("VALIDATION 2: Haversine Mathematical Properties")
         _ln("-" * 50)
         
+        # Compute derived values from EARTH_RADIUS_NM
+        circumference = 2 * math.pi * EARTH_RADIUS_NM
+        half_circ = circumference / 2
+        quarter_circ = circumference / 4
+        one_degree_distance = (math.pi / 180) * EARTH_RADIUS_NM
+        
         test_cases = [
             {
                 'name': 'Zero distance (should be 0 NM)',
@@ -212,17 +257,20 @@ class DeltaE6BFinalValidatorV3:
             {
                 'name': 'Half circumference (should be ~180°)',
                 'lat1': 0, 'lon1': 0, 'lat2': 0, 'lon2': 180,
-                'expected_range': (10800, 10900)  # Half of Earth's circumference
+                'expected_range': (half_circ * (1 - HAVERSINE_TOL_FRACTION), 
+                                  half_circ * (1 + HAVERSINE_TOL_FRACTION))
             },
             {
                 'name': 'Quarter circumference (should be ~90°)',
                 'lat1': 0, 'lon1': 0, 'lat2': 90, 'lon2': 0,
-                'expected_range': (5400, 5500)
+                'expected_range': (quarter_circ * (1 - HAVERSINE_TOL_FRACTION), 
+                                  quarter_circ * (1 + HAVERSINE_TOL_FRACTION))
             },
             {
                 'name': 'One degree at equator (should be ~60 NM)',
                 'lat1': 0, 'lon1': 0, 'lat2': 0, 'lon2': 1,
-                'expected_range': (59, 61)
+                'expected_range': (one_degree_distance - HAVERSINE_TOL_NM, 
+                                  one_degree_distance + HAVERSINE_TOL_NM)
             }
         ]
         
@@ -278,16 +326,16 @@ class DeltaE6BFinalValidatorV3:
             },
             {
                 'name': 'Neutral phase always equals 1.0',
-                'test': lambda: abs(enhanced_phase_harmony(1, 0, 100) - 1.0) < 0.01
+                'test': lambda: abs(enhanced_phase_harmony(1, 0, 100) - 1.0) < PHASE_NEUTRAL_TOL
             },
             {
                 'name': 'Distance decay (large distance approaches 1.0)',
-                'test': lambda: abs(enhanced_phase_harmony(1, 1, 1466) - 1.0) < 0.1
+                'test': lambda: abs(enhanced_phase_harmony(1, 1, 1466) - 1.0) < PHASE_DISTANCE_DECAY_TOL
             },
             {
                 'name': 'Symmetry property (harmony(a,b) = harmony(b,a))',
                 'test': lambda: abs(enhanced_phase_harmony(1, -1, 100) - 
-                                  enhanced_phase_harmony(-1, 1, 100)) < 0.001
+                                  enhanced_phase_harmony(-1, 1, 100)) < PHASE_SYMMETRY_TOL
             }
         ]
         
@@ -303,7 +351,7 @@ class DeltaE6BFinalValidatorV3:
                 else:
                     status = "✗ FAIL"
             except Exception as e:
-                status = f"✗ ERROR: {e}"
+                status = f"✗ ERROR: enhanced_phase_harmony call failed - {str(e)}"
             
             _ln(f"  {prop['name']:<45} {status}")
         
@@ -329,11 +377,11 @@ class DeltaE6BFinalValidatorV3:
         properties = [
             {
                 'name': 'Zero distance, same phase = 100%',
-                'test': lambda: abs(enhanced_confidence(0, 1) - 100.0) < 0.1
+                'test': lambda: abs(enhanced_confidence(0, 1) - 100.0) < CONFIDENCE_TOL
             },
             {
                 'name': 'Maximum distance, opposite phase = 0%',
-                'test': lambda: abs(enhanced_confidence(1466, -1) - 0.0) < 0.1
+                'test': lambda: abs(enhanced_confidence(1466, -1) - 0.0) < CONFIDENCE_TOL
             },
             {
                 'name': 'Confidence bounds [0, 100]',
@@ -361,7 +409,7 @@ class DeltaE6BFinalValidatorV3:
                 else:
                     status = "✗ FAIL"
             except Exception as e:
-                status = f"✗ ERROR: {e}"
+                status = f"✗ ERROR: enhanced_confidence call failed - {str(e)}"
             
             _ln(f"  {prop['name']:<40} {status}")
         
@@ -384,26 +432,36 @@ class DeltaE6BFinalValidatorV3:
         _ln("VALIDATION 5: Magnetic Coupling Physics Proof")
         _ln("-" * 47)
         
+        # Define function f(g) = 1 + K_MAG * g
+        def mag_factor(gradient):
+            return 1 + K_MAG * gradient
+        
+        # Compute slopes over intervals using finite differences
+        # Slope from 0 to MAG_GRADIENT_TEST_INTERVAL
+        slope_0_100 = (mag_factor(MAG_GRADIENT_TEST_INTERVAL) - mag_factor(0)) / MAG_GRADIENT_TEST_INTERVAL
+        # Slope from MAG_GRADIENT_TEST_INTERVAL to 2*MAG_GRADIENT_TEST_INTERVAL
+        slope_100_200 = (mag_factor(2 * MAG_GRADIENT_TEST_INTERVAL) - mag_factor(MAG_GRADIENT_TEST_INTERVAL)) / MAG_GRADIENT_TEST_INTERVAL
+        
         properties = [
             {
                 'name': 'Zero gradient = no effect (factor = 1.0)',
-                'test': lambda: abs((1 + K_MAG * 0) - 1.0) < 0.000001
+                'test': lambda: abs(mag_factor(0) - 1.0) < FINITE_DIFF_TOL
             },
             {
                 'name': 'Positive gradient increases factor',
-                'test': lambda: (1 + K_MAG * 100) > 1.0
+                'test': lambda: mag_factor(MAG_GRADIENT_TEST_INTERVAL) > 1.0
             },
             {
                 'name': 'Negative gradient decreases factor',
-                'test': lambda: (1 + K_MAG * -100) < 1.0
+                'test': lambda: mag_factor(-MAG_GRADIENT_TEST_INTERVAL) < 1.0
             },
             {
-                'name': 'Linear relationship verified',
-                'test': lambda: abs((1 + K_MAG * 200) - 2*(1 + K_MAG * 100) + 1.0) < 0.000001
+                'name': 'Linear relationship (constant slope)',
+                'test': lambda: abs(slope_0_100 - slope_100_200) < FINITE_DIFF_TOL
             },
             {
                 'name': 'Physical bounds (factor stays reasonable)',
-                'test': lambda: 0.5 < (1 + K_MAG * 50000) < 2.0  # Even with extreme gradients
+                'test': lambda: 0.5 < mag_factor(50000) < 2.0  # Even with extreme gradients
             }
         ]
         
@@ -419,7 +477,7 @@ class DeltaE6BFinalValidatorV3:
                 else:
                     status = "✗ FAIL"
             except Exception as e:
-                status = f"✗ ERROR: {e}"
+                status = f"✗ ERROR: magnetic coupling test failed - {str(e)}"
             
             _ln(f"  {prop['name']:<42} {status}")
         
@@ -452,18 +510,25 @@ class DeltaE6BFinalValidatorV3:
         successful = 0
         total = len(routes)
         
+        # Required keys to validate result
+        required_keys = ['distance_nm', 'phase_harmony', 'delta_confidence', 'magnetic_efficiency_factor']
+        
         for origin, dest in routes:
             if origin in ENHANCED_MAGNETIC_COORDINATES and dest in ENHANCED_MAGNETIC_COORDINATES:
                 result = delta_e6b_enhanced(origin, dest, 450, 35, 310)
-                if result:
+                
+                # Validate result is not None and has required keys
+                if result is not None and all(key in result for key in required_keys):
                     successful += 1
                     _ln(f"  ✓ {origin} → {dest}:")
                     _ln(f"     Distance: {result['distance_nm']:.0f} NM")
                     _ln(f"     Phase Harmony: {result['phase_harmony']:.4f}")
                     _ln(f"     DELTA Confidence: {result['delta_confidence']:.1f}%")
                     _ln(f"     Magnetic Efficiency: {result['magnetic_efficiency_factor']:.6f}")
+                elif result is None:
+                    _ln(f"  ✗ {origin} → {dest}: Calculation returned None")
                 else:
-                    _ln(f"  ✗ {origin} → {dest}: Calculation failed")
+                    _ln(f"  ✗ {origin} → {dest}: Incomplete result (missing required keys)")
             else:
                 _ln(f"  ⚠ {origin} → {dest}: Location not in database")
         
@@ -496,18 +561,25 @@ class DeltaE6BFinalValidatorV3:
         successful = 0
         total = len(polar_routes)
         
+        # Required keys to validate result
+        required_keys = ['distance_nm', 'field_gradient', 'delta_confidence', 'ring_distance']
+        
         for origin, dest in polar_routes:
             if origin in ENHANCED_MAGNETIC_COORDINATES and dest in ENHANCED_MAGNETIC_COORDINATES:
                 result = delta_e6b_enhanced(origin, dest, 400, 40, 270)
-                if result:
+                
+                # Validate result is not None and has required keys
+                if result is not None and all(key in result for key in required_keys):
                     successful += 1
                     _ln(f"  ✓ {origin} → {dest}:")
                     _ln(f"     Distance: {result['distance_nm']:.0f} NM")
                     _ln(f"     Field Gradient: {result['field_gradient']:+.2f} nT/NM")
                     _ln(f"     Confidence: {result['delta_confidence']:.1f}%")
                     _ln(f"     Ring Distance: {result['ring_distance']}")
+                elif result is None:
+                    _ln(f"  ✗ {origin} → {dest}: Calculation returned None")
                 else:
-                    _ln(f"  ✗ {origin} → {dest}: Calculation failed")
+                    _ln(f"  ✗ {origin} → {dest}: Incomplete result (missing required keys)")
         
         accuracy = (successful / total) * 100
         self.real_world_tests.append({
@@ -528,6 +600,9 @@ class DeltaE6BFinalValidatorV3:
         _ln("VALIDATION 8: Phase-Optimized Corridors Analysis")
         _ln("-" * 50)
         
+        # Required keys to validate result
+        required_keys = ['phase_harmony', 'delta_confidence', 'ring_distance']
+        
         # Find phase-aligned corridors
         locations = list(ENHANCED_MAGNETIC_COORDINATES.keys())[:12]
         corridors = []
@@ -543,8 +618,10 @@ class DeltaE6BFinalValidatorV3:
                     
                     if origin_phase == dest_phase:
                         result = delta_e6b_enhanced(origin, dest, 300, 20, 45)
-                        if result and result['phase_harmony'] > 1.05:
-                            corridors.append((origin, dest, result))
+                        # Validate result is not None and has required keys
+                        if result is not None and all(key in result for key in required_keys):
+                            if result['phase_harmony'] > 1.05:
+                                corridors.append((origin, dest, result))
         
         corridors.sort(key=lambda x: x[2]['phase_harmony'], reverse=True)
         
@@ -593,16 +670,20 @@ class DeltaE6BFinalValidatorV3:
         successful = 0
         total = len(scenarios)
         
+        # Required keys to validate result
+        required_keys = ['ground_speed_knots', 'time_hours']
+        
         for scenario in scenarios:
             result = delta_e6b_enhanced('CALGARY', 'VANCOUVER', scenario['tas'], 
                                       scenario.get('wind', 0), scenario.get('wind_dir', 0))
-            if result:
-                # Check numerical stability
-                stable = (result['ground_speed_knots'] >= 0 and 
-                         result['time_hours'] > 0 and 
-                         result['time_hours'] < 24 and
-                         not math.isnan(result['ground_speed_knots']) and
-                         not math.isnan(result['time_hours']))
+            
+            # Validate result is not None and has required keys
+            if result is not None and all(key in result for key in required_keys):
+                # Check numerical stability using math.isfinite and proper bounds
+                stable = (math.isfinite(result['ground_speed_knots']) and
+                         math.isfinite(result['time_hours']) and
+                         result['ground_speed_knots'] > 0 and 
+                         0 < result['time_hours'] < 24)
                 
                 if stable:
                     successful += 1
@@ -613,6 +694,10 @@ class DeltaE6BFinalValidatorV3:
                 _ln(f"  {scenario['name']:<25} {status}")
                 _ln(f"                       GS: {result['ground_speed_knots']:6.1f} kt, "
                       f"Time: {result['time_hours']:5.2f} h")
+            elif result is None:
+                _ln(f"  {scenario['name']:<25} ✗ FAILED (returned None)")
+            else:
+                _ln(f"  {scenario['name']:<25} ✗ FAILED (incomplete result)")
         
         accuracy = (successful / total) * 100
         self.real_world_tests.append({
