@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Δ1 Final - Cantor/Cog/φ</title>
+<style>
+*{margin:0;padding:0}
+body{
+  background:#000;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  height:100vh;
+  color:#0f0;
+  font:12px monospace;
+}
+canvas{
+  border:1px solid #0f0;
+  margin:10px;
+  image-rendering:pixelated;
+  image-rendering:crisp-edges;
+}
+#info{opacity:0.5;text-align:center}
+input{
+  background:#000;
+  border:1px solid #0f0;
+  color:#0f0;
+  padding:5px;
+  font:inherit;
+  margin:5px;
+}
+</style>
+</head>
+<body>
+<h2>Δ1 Final Kernel</h2>
+<div>
+  <input id="seed" value="FINAL" placeholder="Seed"/>
+  <input id="w" type="number" value="320" min="64" max="640" style="width:60px"/>
+  <input id="h" type="number" value="240" min="64" max="480" style="width:60px"/>
+</div>
+<canvas id="c"></canvas>
+<div id="info">
+  Zero resources • Cantor gating (O(1)) • Cog tinting • Golden ratio stepping (φ=233)<br>
+  Blue channel = Cog index | Cantor incursion flip at depth 6
+</div>
+
+<script src="delta1_final.js"></script>
+<script>
+'use strict';
+
+const seedInput = document.getElementById('seed');
+const wInput = document.getElementById('w');
+const hInput = document.getElementById('h');
+
+let animId = null;
+
+function start() {
+  if (animId) cancelAnimationFrame(animId);
+  
+  const w = parseInt(wInput.value) || 320;
+  const h = parseInt(hInput.value) || 240;
+  const seed = seedInput.value || 'FINAL';
+  
+  animate('c', w, h, seed);
+}
+
+seedInput.onchange = start;
+wInput.onchange = start;
+hInput.onchange = start;
+
+start();
+</script>
+</body>
+</html>

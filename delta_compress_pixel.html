@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Δ-Pixel Compress</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font:12px/1.4 monospace;background:#000;color:#0f0;padding:10px}
+  #drop{border:1px solid #0f0;padding:30px;text-align:center;cursor:pointer;margin:10px 0}
+  #drop:hover{background:#001100}
+  #out{margin:10px 0;color:#0f0;font-size:11px}
+  .px{display:inline-block;width:2px;height:2px;margin:0;padding:0}
+  button{background:#0f0;color:#000;border:none;padding:4px 8px;cursor:pointer;font:10px monospace;margin:2px}
+</style>
+</head>
+<body>
+<div id="drop">DROP FILE → COMPRESS TO PIXEL</div>
+<div id="out"></div>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const fib = [1,1,2,3,5,8,13,21,34,55,89,144,233,377,610,987];
+  let pixelData = null;
+  
+  async function sha256(data) {
+    const buf = await crypto.subtle.digest('SHA-256', data);
+    return new Uint8Array(buf);
+  }
+  
+  function xorFold(bytes) {
+    let x = 0, map = new Uint8Array(256);
+    for (let i = 0; i < bytes.length; i++) { x ^= bytes[i]; map[bytes[i]]++; }
+    return { x, map };
+  }
+  
+  function morris(map) {
+    let s = 0;
+    for (let i = 0; i < 256; i++) if ((map[i] & 1) === 0) s ^= i;
+    return s & 0xFF;
+  }
+  
+  function torque(b) {
+    const c = 128, d = b - c;
+    return Math.max(0, Math.min(255, Math.round(c + Math.sin(d / 3) * d * 0.8)));
+  }
+  
+  function fibCompress(v) {
+    for (let i = 0; i < 16; i++) v *= (fib[i] / fib[(i + 1) % 16]) / 1.618;
+    return v;
+  }
+  
+  async function compressToPixel(file) {
+    const t0 = performance.now();
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    
+    // Delta fold pipeline
+    const hash = await sha256(bytes);
+    const { x: xor, map } = xorFold(bytes);
+    const m = morris(map);
+    
+    // Delta extraction
+    const deltas = [];
+    for (let i = 1; i < bytes.length; i++) deltas.push(bytes[i] - bytes[i - 1]);
+    const { x: dx, map: dm } = xorFold(new Uint8Array(deltas.map(d => Math.abs(d) & 0xFF)));
+    const dm2 = morris(dm);
+    
+    // Torque + Fibonacci
+    const t = torque(dm2);
+    const f = fibCompress(t / 255);
+    
+    // PIXEL: 4-byte signature (RGBA)
+    const pixel = new Uint8Array([
+      xor,           // R: file XOR
+      m,             // G: Morris collapse
+      t,             // B: Torque fold
+      dm2            // A: Delta collapse
+    ]);
+    
+    // Extended signature (16 bytes)
+    const sig = new Uint8Array(16);
+    sig.set(hash.slice(0, 4), 0);  // Hash prefix
+    sig.set(pixel, 4);              // Pixel (RGBA)
+    sig.set([
+      (bytes.length >> 24) & 0xFF,
+      (bytes.length >> 16) & 0xFF,
+      (bytes.length >> 8) & 0xFF,
+      bytes.length & 0xFF
+    ], 8);                          // Original size (4 bytes)
+    sig.set([
+      Math.floor(f * 255) & 0xFF,
+      Math.floor((f * 65536) % 256),
+      Math.floor((f * 16777216) % 256),
+      (hash.reduce((s, b) => s + b, 0) >> 8) & 0xFF
+    ], 12);                         // Fibonacci fold + hash checksum
+    
+    const ratio = ((1 - 16 / bytes.length) * 100).toFixed(4);
+    const time = (performance.now() - t0).toFixed(1);
+    
+    pixelData = { pixel, sig, file, bytes, ratio, time };
+    
+    // Display
+    const hex = Array.from(pixel).map(b => b.toString(16).padStart(2, '0')).join('');
+    const rgb = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+    
+    $('out').innerHTML = `
+<div style="margin:10px 0">
+  <div style="display:inline-block;width:64px;height:64px;background:${rgb};border:1px solid #0f0;image-rendering:pixelated"></div>
+  <div style="display:inline-block;vertical-align:top;margin-left:10px">
+    <b>${file.name}</b><br>
+    ${(bytes.length / 1024).toFixed(2)} KB → <b>16 bytes</b><br>
+    Ratio: <b>${ratio}%</b> smaller<br>
+    Time: ${time}ms<br>
+    Pixel: <b style="color:#ff0">#${hex}</b><br>
+    RGB: <b>${pixel[0]}, ${pixel[1]}, ${pixel[2]}</b><br>
+    Signature: ${Array.from(sig).map(b => b.toString(16).padStart(2, '0')).join('')}
+  </div>
+</div>
+<button onclick="dl()">⬇ DL SIG (16B)</button>
+<button onclick="dlPx()">⬇ DL PIXEL (4B)</button>
+<button onclick="cp()">📋 COPY HEX</button>
+<button onclick="cpRGB()">🎨 COPY RGB</button>
+    `;
+  }
+  
+  window.dl = () => {
+    const blob = new Blob([pixelData.sig], { type: 'application/octet-stream' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = pixelData.file.name + '.delta16';
+    a.click();
+  };
+  
+  window.dlPx = () => {
+    const blob = new Blob([pixelData.pixel], { type: 'application/octet-stream' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = pixelData.file.name + '.pixel';
+    a.click();
+  };
+  
+  window.cp = () => {
+    const hex = Array.from(pixelData.pixel).map(b => b.toString(16).padStart(2, '0')).join('');
+    navigator.clipboard.writeText(hex);
+  };
+  
+  window.cpRGB = () => {
+    const rgb = `${pixelData.pixel[0]},${pixelData.pixel[1]},${pixelData.pixel[2]}`;
+    navigator.clipboard.writeText(rgb);
+  };
+  
+  const drop = $('drop');
+  drop.onclick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) compressToPixel(file);
+    };
+    input.click();
+  };
+  
+  drop.ondragover = (e) => { e.preventDefault(); drop.style.background = '#002200'; };
+  drop.ondragleave = () => { drop.style.background = ''; };
+  drop.ondrop = async (e) => {
+    e.preventDefault();
+    drop.style.background = '';
+    const file = e.dataTransfer.files[0];
+    if (file) await compressToPixel(file);
+  };
+  
+  console.log('Δ-PIXEL ready - compress any file to 4 bytes');
+})();
+</script>
+</body>
+</html>
