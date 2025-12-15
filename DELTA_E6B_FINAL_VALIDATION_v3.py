@@ -32,6 +32,7 @@ COURSE_TOL_DEG = 10.0  # Tolerance for course checking in degrees
 HAVERSINE_TOL_FRACTION = 0.01  # 1% tolerance for haversine distance validation
 HAVERSINE_TOL_NM = 10.0  # Absolute tolerance in NM for large distances
 FINITE_DIFF_TOL = 1e-9  # Tolerance for finite difference slope checks
+MAG_GRADIENT_TEST_INTERVAL = 100  # Gradient interval for magnetic coupling slope tests
 
 def _w(s):
     """Write without newline."""
@@ -184,16 +185,18 @@ class DeltaE6BFinalValidatorV3:
             
             if 'Zero distance' in case['property']:
                 # Zero-distance case: distance should be ~0, course is undefined
-                if distance <= ZERO_DIST_TOL:
-                    valid = (distance == 0 or distance < ZERO_DIST_TOL)
+                if distance < ZERO_DIST_TOL:
+                    valid = True
                     _ln(f"  {case['name']:<35} Distance: {distance:.6f} NM")
                     _ln(f"    Course: {course:6.1f}° (undefined for zero distance)")
                 else:
                     valid = False
             elif 'Antipodal' in case['property']:
                 # Antipodal: course should be approximately 180°
-                # Use modular arithmetic: diff = abs((course - 180 + 180) % 360 - 180)
-                diff = abs((course - 180 + 180) % 360 - 180)
+                # Use modular arithmetic to compute minimal angular difference from 180°
+                diff = abs((course % 360) - 180)
+                if diff > 180:
+                    diff = 360 - diff
                 valid = diff <= COURSE_TOL_DEG
             elif 'Equatorial' in case['property']:
                 # Equatorial: check distance first to avoid false positives
@@ -438,10 +441,10 @@ class DeltaE6BFinalValidatorV3:
             return 1 + K_MAG * gradient
         
         # Compute slopes over intervals using finite differences
-        # Slope from 0 to 100: (f(100) - f(0)) / 100
-        slope_0_100 = (mag_factor(100) - mag_factor(0)) / 100
-        # Slope from 100 to 200: (f(200) - f(100)) / 100
-        slope_100_200 = (mag_factor(200) - mag_factor(100)) / 100
+        # Slope from 0 to MAG_GRADIENT_TEST_INTERVAL
+        slope_0_100 = (mag_factor(MAG_GRADIENT_TEST_INTERVAL) - mag_factor(0)) / MAG_GRADIENT_TEST_INTERVAL
+        # Slope from MAG_GRADIENT_TEST_INTERVAL to 2*MAG_GRADIENT_TEST_INTERVAL
+        slope_100_200 = (mag_factor(2 * MAG_GRADIENT_TEST_INTERVAL) - mag_factor(MAG_GRADIENT_TEST_INTERVAL)) / MAG_GRADIENT_TEST_INTERVAL
         
         properties = [
             {
@@ -450,11 +453,11 @@ class DeltaE6BFinalValidatorV3:
             },
             {
                 'name': 'Positive gradient increases factor',
-                'test': lambda: mag_factor(100) > 1.0
+                'test': lambda: mag_factor(MAG_GRADIENT_TEST_INTERVAL) > 1.0
             },
             {
                 'name': 'Negative gradient decreases factor',
-                'test': lambda: mag_factor(-100) < 1.0
+                'test': lambda: mag_factor(-MAG_GRADIENT_TEST_INTERVAL) < 1.0
             },
             {
                 'name': 'Linear relationship (constant slope)',
@@ -478,7 +481,7 @@ class DeltaE6BFinalValidatorV3:
                 else:
                     status = "✗ FAIL"
             except Exception as e:
-                status = f"✗ ERROR: {e}"
+                status = f"✗ ERROR: magnetic coupling test failed - {str(e)}"
             
             _ln(f"  {prop['name']:<42} {status}")
         
