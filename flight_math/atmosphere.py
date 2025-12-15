@@ -74,7 +74,9 @@ def pressure_at_altitude(altitude):
     else:
         # Stratosphere calculation
         temp_at_tropopause = temperature_at_altitude(TROPOSPHERE_HEIGHT)
-        pressure_at_tropopause = pressure_at_altitude(TROPOSPHERE_HEIGHT - 1)
+        # Calculate pressure at tropopause directly using troposphere formula
+        exponent = GRAVITY / (TEMPERATURE_LAPSE_RATE * GAS_CONSTANT)
+        pressure_at_tropopause = SEA_LEVEL_PRESSURE * (temp_at_tropopause / SEA_LEVEL_TEMPERATURE) ** exponent
         return pressure_at_tropopause * math.exp(
             -GRAVITY * (altitude - TROPOSPHERE_HEIGHT) / (GAS_CONSTANT * temp_at_tropopause)
         )

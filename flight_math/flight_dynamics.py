@@ -82,7 +82,7 @@ def turn_radius(velocity, bank_angle_deg):
     
     Example:
         >>> round(turn_radius(50, 30), 2)
-        436.78
+        441.55
     """
     if velocity < 0:
         raise ValueError("Velocity must be non-negative")
